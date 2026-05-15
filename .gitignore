@@ -4,3 +4,6 @@ data/
 *.db
 .DS_Store
 .env
+
+# Cursor/Claude nested worktrees (separate git repos — do not track as submodules)
+.claude/worktrees/
