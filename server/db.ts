@@ -150,6 +150,22 @@ if (!entryColumns.includes('primary_themes')) {
   `)
 }
 
+const symbolColumns = (db.prepare('PRAGMA table_info(symbols)').all() as { name: string }[]).map(c => c.name)
+const symbolNewCols: [string, string][] = [
+  ['poetic_essence', "TEXT DEFAULT ''"],
+  ['voice', "TEXT DEFAULT ''"],
+  ['elemental_quality', "TEXT DEFAULT ''"],
+  ['season', "TEXT DEFAULT ''"],
+  ['recurring_contexts', "TEXT DEFAULT ''"],
+  ['field_notes', "TEXT DEFAULT '[]'"],
+]
+
+for (const [col, def] of symbolNewCols) {
+  if (!symbolColumns.includes(col)) {
+    db.exec(`ALTER TABLE symbols ADD COLUMN ${col} ${def}`)
+  }
+}
+
 // ─── Seed cards (78 rows, idempotent) ────────────────────────────────────────
 
 const CARDS_78 = [

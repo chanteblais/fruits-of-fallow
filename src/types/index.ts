@@ -48,10 +48,16 @@ export interface Symbol {
   id: string
   name: string
   meaning: string
+  poeticEssence?: string
+  voice?: string
+  elementalQuality?: string
+  season?: string
+  recurringContexts?: string
   emotionalAssociations: string[]
   connectedCards: string[]
   appearances: string[]
   evolution: TimestampedNote[]
+  fieldNotes?: TimestampedNote[]
   relatedSymbols: string[]
   journalBacklinks: string[]
 }

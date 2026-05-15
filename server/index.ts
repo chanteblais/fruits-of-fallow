@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import express from 'express'
+import fs from 'fs'
 import path from 'path'
 import { IMG_DIR } from './db'
 import entriesRouter from './routes/entries'
@@ -13,11 +14,15 @@ import templateRouter from './routes/template'
 import weavingRouter from './routes/weaving'
 import analyzeRouter from './routes/analyze'
 
+const SYMBOL_STATIC_DIR = path.join(IMG_DIR, 'symbols')
+fs.mkdirSync(SYMBOL_STATIC_DIR, { recursive: true })
+
 const app = express()
 const PORT = 3001
 
 app.use(express.json({ limit: '50mb' }))
 app.use('/images', express.static(IMG_DIR))
+app.use('/symbols', express.static(SYMBOL_STATIC_DIR))
 
 app.use('/api/entries', entriesRouter)
 app.use('/api/cards', cardsRouter)

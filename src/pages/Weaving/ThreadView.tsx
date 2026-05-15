@@ -43,7 +43,7 @@ export default function ThreadView() {
       </div>
 
       {/* ── Header ── */}
-      <div style={{ maxWidth: 680, marginBottom: 36 }}>
+      <div style={{ maxWidth: 680, margin: '0 auto 36px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div>
             <h2 style={{ fontSize: 26, color: 'var(--gold)', marginBottom: 6 }}>{thread.title}</h2>
@@ -61,7 +61,7 @@ export default function ThreadView() {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ maxWidth: 640, marginBottom: 48 }}>
+      <div style={{ maxWidth: 640, margin: '0 auto 48px', width: '100%' }}>
         {paragraphs.map((p, i) => (
           <p key={i} style={{
             fontSize: 15.5,
@@ -77,13 +77,13 @@ export default function ThreadView() {
       </div>
 
       {/* ── Ornament ── */}
-      <div style={{ maxWidth: 640, textAlign: 'center', marginBottom: 40, color: 'var(--gold-dim)', letterSpacing: 12, fontSize: 12 }}>
+      <div style={{ maxWidth: 640, margin: '0 auto 40px', width: '100%', textAlign: 'center', color: 'var(--gold-dim)', letterSpacing: 12, fontSize: 12 }}>
         ✦ · · · ✦
       </div>
 
       {/* ── Symbolic Echoes ── */}
       {thread.threads.length > 0 && (
-        <div style={{ maxWidth: 720, marginBottom: 40 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto 40px', width: '100%' }}>
           <h3 style={{ fontSize: 10, color: 'var(--gold)', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 16 }}>
             Symbolic Echoes
           </h3>
@@ -104,7 +104,7 @@ export default function ThreadView() {
 
       {/* ── Observed across ── */}
       {(thread.cardsObserved.length > 0 || thread.symbolsObserved.length > 0) && (
-        <div style={{ maxWidth: 720, marginBottom: 48 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto 48px', width: '100%' }}>
           <h3 style={{ fontSize: 10, color: 'var(--gold)', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 14 }}>
             Moving Through
           </h3>
@@ -119,7 +119,7 @@ export default function ThreadView() {
         </div>
       )}
 
-      <div style={{ marginBottom: 48 }}>
+      <div style={{ maxWidth: 720, margin: '0 auto 48px', width: '100%' }}>
         <Link to="/living-thread" className="btn btn-sm">← Back to The Living Thread</Link>
       </div>
     </>

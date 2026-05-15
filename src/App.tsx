@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from './contexts/ToastContext'
 import Nav from './components/Nav'
 import Home from './pages/Home'
@@ -7,7 +7,7 @@ import EntryForm from './pages/Journal/EntryForm'
 import EntryDetail from './pages/Journal/EntryDetail'
 import CardLibrary from './pages/CardLibrary'
 import SymbolLexicon from './pages/SymbolLexicon'
-import StudySystem from './pages/StudySystem'
+import Attunement from './pages/Attunement'
 import LivingArcana from './pages/LivingArcana/index'
 import LivingArcanaCard from './pages/LivingArcana/CardPage'
 import Weaving from './pages/Weaving'
@@ -28,7 +28,8 @@ export default function App() {
               <Route path="/journal/:id" element={<EntryDetail />} />
               <Route path="/cards" element={<CardLibrary />} />
               <Route path="/symbols" element={<SymbolLexicon />} />
-              <Route path="/study" element={<StudySystem />} />
+              <Route path="/attunement" element={<Attunement />} />
+              <Route path="/study" element={<Navigate to="/attunement" replace />} />
               <Route path="/living-thread" element={<Weaving />} />
               <Route path="/living-thread/:id" element={<ThreadView />} />
               <Route path="/living-arcana" element={<LivingArcana />} />

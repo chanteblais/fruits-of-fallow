@@ -22,10 +22,10 @@ interface AnalysisItem { text: string; type: string; reason: string }
 function InsightItem({ item }: { item: AnalysisItem }) {
   const [open, setOpen] = useState(false)
   return (
-    <div style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
-      <div style={{ fontSize: 13, color: 'var(--cream-dim)', lineHeight: 1.6 }}>{item.text}</div>
+    <div style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+      <div style={{ fontSize: 15, color: 'var(--cream-dim)', lineHeight: 1.65 }}>{item.text}</div>
       {open && (
-        <div style={{ fontSize: 11, color: 'var(--cream-muted)', marginTop: 4, fontStyle: 'italic' }}>
+        <div style={{ fontSize: 13, color: 'var(--cream-muted)', marginTop: 5, fontStyle: 'italic', lineHeight: 1.5 }}>
           {item.reason}
         </div>
       )}
@@ -37,7 +37,7 @@ function Section({ title, items }: { title: string; items?: AnalysisItem[] }) {
   if (!items || items.length === 0) return null
   return (
     <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 10, color: 'var(--gold)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 10 }}>
+      <div style={{ fontSize: 16, color: 'var(--gold)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 12 }}>
         {title}
       </div>
       {items.map((item, i) => <InsightItem key={i} item={item} />)}
@@ -95,6 +95,7 @@ export default function CardPage() {
 
   const hasLivingArcana = Object.values(allLivingArcana).some(a => a.length > 0)
   const hasWeaving      = Object.values(allWeaving).some(a => a.length > 0)
+  const weavingOnly = hasWeaving && !hasLivingArcana
 
   const allLinkedCards   = [...new Set(analyses.flatMap(a => a.crossLinks.linked_cards || []))]
   const allLinkedSymbols = [...new Set(analyses.flatMap(a => a.crossLinks.linked_symbols || []))]
@@ -103,7 +104,7 @@ export default function CardPage() {
   const latestImage = cardImages.length > 0 ? cardImages[cardImages.length - 1] : null
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1160, margin: '0 auto' }}>
       <div className="breadcrumb">
         <Link to="/living-arcana">Living Arcana</Link> › {card.name}
       </div>
@@ -131,37 +132,11 @@ export default function CardPage() {
           )}
         </div>
         {card.traditional && (
-          <p style={{ fontSize: 12, color: 'var(--cream-muted)', fontStyle: 'italic', marginTop: 8, marginBottom: 0, maxWidth: 560 }}>
+          <p style={{ fontSize: 15, color: 'var(--cream-muted)', fontStyle: 'italic', lineHeight: 1.6, marginTop: 8, marginBottom: 0, maxWidth: 820 }}>
             {card.traditional}
           </p>
         )}
       </div>
-
-      {latestImage && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
-          <div style={{ textAlign: 'center' }}>
-            <img
-              src={`/images/${latestImage.filename}`}
-              alt={latestImage.caption || card.name}
-              style={{
-                height: 260,
-                width: 'auto',
-                borderRadius: 10,
-                border: '1px solid var(--border)',
-                display: 'block',
-              }}
-            />
-            {(latestImage.caption || latestImage.iteration) && (
-              <div style={{ fontSize: 11, color: 'var(--cream-muted)', marginTop: 6 }}>
-                {latestImage.caption}
-                {latestImage.iteration && (
-                  <span style={{ color: 'var(--gold-dim)', marginLeft: 4 }}>#{latestImage.iteration}</span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <div className="loading">Loading…</div>
@@ -171,31 +146,71 @@ export default function CardPage() {
           <Link to="/journal/new" className="btn btn-sm">Log a Pull</Link>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: 900, alignItems: 'start' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: weavingOnly ? '1fr' : '1fr 1fr',
+            gap: 40,
+            maxWidth: 1160,
+            alignItems: 'start',
+            justifyItems: weavingOnly ? 'stretch' : undefined,
+          }}
+        >
+          {latestImage && (
+            <div style={{
+              gridColumn: '1 / -1',
+              textAlign: 'center',
+              justifySelf: 'center',
+              marginBottom: 4,
+              transform: weavingOnly ? undefined : 'translateX(-32px)',
+            }}>
+              <img
+                src={`/images/${latestImage.filename}`}
+                alt={latestImage.caption || card.name}
+                style={{
+                  height: 340,
+                  width: 'auto',
+                  borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  display: 'block',
+                }}
+              />
+              {(latestImage.caption || latestImage.iteration) && (
+                <div style={{ fontSize: 11, color: 'var(--cream-muted)', marginTop: 6 }}>
+                  {latestImage.caption}
+                  {latestImage.iteration && (
+                    <span style={{ color: 'var(--gold-dim)', marginLeft: 4 }}>#{latestImage.iteration}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Left: Living Arcana ── */}
-          <div>
-            <h3 style={{ fontSize: 11, color: 'var(--gold)', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 20 }}>
-              ✧ Living Arcana
-            </h3>
+          {!weavingOnly && (
+            <div>
+              <h3 style={{ fontSize: 11, color: 'var(--gold)', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 20 }}>
+                ✧ Living Arcana
+              </h3>
 
-            {!hasLivingArcana ? (
-              <p style={{ fontSize: 13, color: 'var(--cream-muted)', fontStyle: 'italic' }}>
-                Analyze a pull to begin building this card's page.
-              </p>
-            ) : (
-              <>
-                <Section title="Card Meanings & Interpretations" items={allLivingArcana.card_meaning_additions} />
-                <Section title="Visual Language" items={allLivingArcana.visual_notes} />
-                <Section title="Connected Symbols" items={allLivingArcana.symbol_connections} />
-                <Section title="Guidebook Phrases" items={allLivingArcana.guidebook_phrases} />
-                <Section title="Questions to Revisit" items={allLivingArcana.questions_to_revisit} />
-              </>
-            )}
-          </div>
+              {!hasLivingArcana ? (
+                <p style={{ fontSize: 13, color: 'var(--cream-muted)', fontStyle: 'italic' }}>
+                  Analyze a pull to begin building this card's page.
+                </p>
+              ) : (
+                <>
+                  <Section title="Card Meanings & Interpretations" items={allLivingArcana.card_meaning_additions} />
+                  <Section title="Visual Language" items={allLivingArcana.visual_notes} />
+                  <Section title="Connected Symbols" items={allLivingArcana.symbol_connections} />
+                  <Section title="Guidebook Phrases" items={allLivingArcana.guidebook_phrases} />
+                  <Section title="Questions to Revisit" items={allLivingArcana.questions_to_revisit} />
+                </>
+              )}
+            </div>
+          )}
 
-          {/* ── Right: Living Thread ── */}
-          <div>
+          {/* ── Living Thread ── */}
+          <div style={weavingOnly ? { maxWidth: 720, margin: '0 auto', width: '100%', justifySelf: 'center' } : undefined}>
             <h3 style={{ fontSize: 11, color: 'var(--gold)', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 20 }}>
               ✦ Living Thread
             </h3>

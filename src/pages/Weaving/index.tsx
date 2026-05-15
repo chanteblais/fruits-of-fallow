@@ -54,7 +54,7 @@ export default function LivingThread() {
   }
 
   return (
-    <>
+    <div style={{ maxWidth: 780, margin: '0 auto', width: '100%' }}>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -130,7 +130,7 @@ export default function LivingThread() {
           </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 780 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {threads.map(t => (
             <div key={t.id} className="panel" style={{ position: 'relative' }}>
               <Link to={`/living-thread/${t.id}`} style={{ textDecoration: 'none' }}>
@@ -172,6 +172,6 @@ export default function LivingThread() {
           ))}
         </div>
       )}
-    </>
+    </div>
   )
 }

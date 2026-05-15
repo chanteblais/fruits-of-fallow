@@ -7,6 +7,7 @@ interface NavItem {
   icon: string | null
   imgIcon?: string
   imgIconHeight?: number
+  imgIconOffsetX?: number
   label: string
   end?: boolean
 }
@@ -23,13 +24,13 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: 'Catalogue',
     items: [
       { to: '/cards', icon: null, imgIcon: '/images/atelier.png', label: 'Atelier' },
-      { to: '/symbols', icon: '◈', label: 'Symbol Lexicon' },
+      { to: '/symbols', icon: null, imgIcon: '/images/symbol.png', label: 'Symbol Lexicon' },
     ],
   },
   {
     label: 'Study',
     items: [
-      { to: '/study', icon: '⚡', label: 'Study System' },
+      { to: '/attunement', icon: null, imgIcon: '/images/attunement.png', imgIconHeight: 52, imgIconOffsetX: 6, label: 'Attunement' },
     ],
   },
   {
@@ -99,7 +100,7 @@ export default function Nav() {
             >
               <span className="icon" style={item.imgIcon ? { width: 'auto', minWidth: 0, lineHeight: 0 } : undefined}>
                 {item.imgIcon
-                  ? <img src={item.imgIcon} alt="" style={{ height: item.imgIconHeight ?? 64, width: 'auto', verticalAlign: 'middle', opacity: 0.85 }} />
+                  ? <img src={item.imgIcon} alt="" style={{ height: item.imgIconHeight ?? 64, width: 'auto', verticalAlign: 'middle', opacity: 0.85, transform: item.imgIconOffsetX ? `translateX(${item.imgIconOffsetX}px)` : undefined }} />
                   : item.icon}
               </span>
               {item.label}

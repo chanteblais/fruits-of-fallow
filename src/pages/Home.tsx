@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { CARD_MAP, SUIT_COLOR } from '../lib/cards'
 import { calcStreak, fmt, fmtShort, today } from '../lib/utils'
-import type { JournalEntry } from '../types'
+import type { CardImage, JournalEntry } from '../types'
 
 export default function Home() {
   const [entries, setEntries] = useState<JournalEntry[]>([])
@@ -80,7 +80,7 @@ export default function Home() {
             <Link to="/journal/new" className="btn btn-sm">+ New Entry</Link>
             <Link to="/cards" className="btn btn-sm">Card Library</Link>
             <Link to="/symbols" className="btn btn-sm">Symbol Lexicon</Link>
-            <Link to="/study" className="btn btn-sm">Study System</Link>
+            <Link to="/attunement" className="btn btn-sm">Attunement</Link>
           </div>
         </div>
         <div className="panel">
@@ -93,22 +93,53 @@ export default function Home() {
 }
 
 function TodayCard({ entry }: { entry?: JournalEntry }) {
+  const [cardImages, setCardImages] = useState<CardImage[]>([])
+
+  useEffect(() => {
+    if (!entry?.cardId) {
+      setCardImages([])
+      return
+    }
+
+    let cancelled = false
+    api.images.list(entry.cardId)
+      .then(images => {
+        if (!cancelled) setCardImages(images)
+      })
+      .catch(() => {
+        if (!cancelled) setCardImages([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [entry?.cardId])
+
   if (!entry) {
     return (
       <div style={{ textAlign: 'center', padding: '30px 0' }}>
         <div style={{ fontSize: 40, marginBottom: 12, opacity: .4 }}>☽</div>
         <p style={{ color: 'var(--cream-muted)', marginBottom: 16 }}>No pull recorded for today.</p>
-        <Link to="/journal/new" className="btn btn-primary">+ Log Today's Card</Link>
+        <Link to="/journal/new" className="btn btn-primary">Pull Card</Link>
       </div>
     )
   }
 
   const card = CARD_MAP[entry.cardId]
   const suit = card?.suit || 'major'
+  const latestImage = cardImages.length > 0 ? cardImages[cardImages.length - 1] : null
 
   return (
     <div className="today-card">
-      <div className="card-placeholder" style={{ borderColor: SUIT_COLOR[suit] }}>☽</div>
+      {latestImage ? (
+        <img
+          className="today-card-image"
+          src={`/images/${latestImage.filename}`}
+          alt={latestImage.caption || entry.cardName}
+        />
+      ) : (
+        <div className="card-placeholder" style={{ borderColor: SUIT_COLOR[suit] }}>☽</div>
+      )}
       <div className="today-card-info">
         <h3>{entry.cardName}</h3>
         <span className="orientation-badge">{entry.orientation}</span>
