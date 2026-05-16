@@ -1,9 +1,18 @@
 import type { JournalEntry, CardData, Symbol, Theme, CardImage, WeavingThread, EntryAnalysis } from '../types'
+import { getAuthToken } from './authToken'
+
+async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const token = await getAuthToken()
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  }
+}
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: await authHeaders(body ? { 'Content-Type': 'application/json' } : undefined),
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(`${method} ${url} → ${res.status}`)
@@ -48,10 +57,12 @@ export const api = {
       body.append('refType', refType)
       if (caption) body.append('caption', caption)
       if (iteration) body.append('iteration', iteration)
-      return fetch('/api/images', { method: 'POST', body }).then(r => {
-        if (!r.ok) throw new Error('Upload failed')
-        return r.json() as Promise<{ id: string; filename: string }>
-      })
+      return authHeaders().then(headers =>
+        fetch('/api/images', { method: 'POST', headers, body }).then(r => {
+          if (!r.ok) throw new Error('Upload failed')
+          return r.json() as Promise<{ id: string; filename: string }>
+        })
+      )
     },
     updateCaption: (id: string, caption: string) => req('PATCH', `/api/images/${id}/caption`, { caption }),
     delete: (id: string) => req('DELETE', `/api/images/${id}`),

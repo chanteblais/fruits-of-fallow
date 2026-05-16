@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { UserButton } from '@clerk/react'
 import { useToast } from '../contexts/ToastContext'
 import { api } from '../lib/api'
 
@@ -121,6 +122,7 @@ export default function Nav() {
           onChange={handleImport}
           style={{ display: 'none' }}
         />
+        <UserButton />
       </div>
     </nav>
   )

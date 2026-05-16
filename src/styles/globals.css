@@ -75,6 +75,14 @@ button { cursor: pointer; font-family: inherit; border-radius: var(--radius); tr
 /* ─── Layout ──────────────────────────────────────────────────────────────── */
 .app-shell { display: flex; height: 100vh; overflow: hidden; }
 
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
 .app-nav {
   width: var(--nav-width);
   min-width: var(--nav-width);
