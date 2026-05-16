@@ -1,11 +1,11 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { getAuth } from '@clerk/express'
+import { supabase } from '../lib/supabase'
 import { runAnalysis } from './analyze'
 
 const router = Router()
 
 function parseEntry(row: Record<string, unknown>) {
-  if (!row) return null
   return {
     id: row.id,
     date: row.date,
@@ -13,80 +13,97 @@ function parseEntry(row: Record<string, unknown>) {
     cardName: row.card_name,
     suit: row.suit,
     orientation: row.orientation,
-    primaryThemes: row.primary_themes || '',
-    traditionalMeaning: row.traditional_meaning || '',
-    personalReflection: row.personal_reflection || '',
-    howAppeared: row.how_appeared || '',
-    quotesInsights: row.quotes_insights || '',
-    emergingSymbols: JSON.parse(row.emerging_symbols as string || '[]'),
-    visualDirection: row.visual_direction || '',
-    psychologicalThemes: JSON.parse(row.psychological_themes as string || '[]'),
-    guidebookNotes: row.guidebook_notes || '',
+    primaryThemes: row.primary_themes ?? '',
+    traditionalMeaning: row.traditional_meaning ?? '',
+    personalReflection: row.personal_reflection ?? '',
+    howAppeared: row.how_appeared ?? '',
+    quotesInsights: row.quotes_insights ?? '',
+    emergingSymbols: row.emerging_symbols ?? [],
+    visualDirection: row.visual_direction ?? '',
+    psychologicalThemes: row.psychological_themes ?? [],
+    guidebookNotes: row.guidebook_notes ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
-router.get('/', (_req, res) => {
-  const rows = db.prepare('SELECT * FROM entries ORDER BY date DESC').all() as Record<string, unknown>[]
-  res.json(rows.map(parseEntry))
+router.get('/', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { data, error } = await supabase
+    .from('entries').select('*')
+    .eq('user_id', userId).order('date', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json((data ?? []).map(parseEntry))
 })
 
-router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM entries WHERE id = ?').get(req.params.id) as Record<string, unknown> | undefined
-  if (!row) return res.status(404).json({ error: 'Not found' })
-  res.json(parseEntry(row))
+router.get('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { data, error } = await supabase
+    .from('entries').select('*')
+    .eq('id', req.params.id).eq('user_id', userId).maybeSingle()
+  if (error) return res.status(500).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Not found' })
+  res.json(parseEntry(data))
 })
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
+  const { userId } = getAuth(req)
   const e = req.body
-  db.prepare(`
-    INSERT INTO entries (
-      id, date, card_id, card_name, suit, orientation,
-      primary_themes, traditional_meaning, personal_reflection,
-      how_appeared, quotes_insights, emerging_symbols,
-      visual_direction, psychological_themes, guidebook_notes,
-      created_at, updated_at
-    ) VALUES (
-      @id, @date, @cardId, @cardName, @suit, @orientation,
-      @primaryThemes, @traditionalMeaning, @personalReflection,
-      @howAppeared, @quotesInsights, @emergingSymbols,
-      @visualDirection, @psychologicalThemes, @guidebookNotes,
-      @createdAt, @updatedAt
-    )
-  `).run({
-    ...e,
-    emergingSymbols: JSON.stringify(e.emergingSymbols || []),
-    psychologicalThemes: JSON.stringify(e.psychologicalThemes || []),
+  const { error } = await supabase.from('entries').insert({
+    id: e.id,
+    user_id: userId,
+    date: e.date,
+    card_id: e.cardId,
+    card_name: e.cardName,
+    suit: e.suit,
+    orientation: e.orientation,
+    primary_themes: e.primaryThemes ?? '',
+    traditional_meaning: e.traditionalMeaning ?? '',
+    personal_reflection: e.personalReflection ?? '',
+    how_appeared: e.howAppeared ?? '',
+    quotes_insights: e.quotesInsights ?? '',
+    emerging_symbols: e.emergingSymbols ?? [],
+    visual_direction: e.visualDirection ?? '',
+    psychological_themes: e.psychologicalThemes ?? [],
+    guidebook_notes: e.guidebookNotes ?? '',
+    created_at: e.createdAt,
+    updated_at: e.updatedAt,
   })
-  runAnalysis(e.id).catch(err => console.error('Auto-analysis failed:', err))
+  if (error) return res.status(500).json({ error: error.message })
+  runAnalysis(e.id, userId!).catch(err => console.error('Auto-analysis failed:', err))
   res.json({ ok: true })
 })
 
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
   const e = req.body
-  db.prepare(`
-    UPDATE entries SET
-      date = @date, card_id = @cardId, card_name = @cardName, suit = @suit,
-      orientation = @orientation, primary_themes = @primaryThemes,
-      traditional_meaning = @traditionalMeaning,
-      personal_reflection = @personalReflection, how_appeared = @howAppeared,
-      quotes_insights = @quotesInsights, emerging_symbols = @emergingSymbols,
-      visual_direction = @visualDirection, psychological_themes = @psychologicalThemes,
-      guidebook_notes = @guidebookNotes, updated_at = @updatedAt
-    WHERE id = @id
-  `).run({
-    ...e,
-    id: req.params.id,
-    emergingSymbols: JSON.stringify(e.emergingSymbols || []),
-    psychologicalThemes: JSON.stringify(e.psychologicalThemes || []),
-  })
-  runAnalysis(req.params.id).catch(err => console.error('Auto-analysis failed:', err))
+  const { error } = await supabase.from('entries').update({
+    date: e.date,
+    card_id: e.cardId,
+    card_name: e.cardName,
+    suit: e.suit,
+    orientation: e.orientation,
+    primary_themes: e.primaryThemes ?? '',
+    traditional_meaning: e.traditionalMeaning ?? '',
+    personal_reflection: e.personalReflection ?? '',
+    how_appeared: e.howAppeared ?? '',
+    quotes_insights: e.quotesInsights ?? '',
+    emerging_symbols: e.emergingSymbols ?? [],
+    visual_direction: e.visualDirection ?? '',
+    psychological_themes: e.psychologicalThemes ?? [],
+    guidebook_notes: e.guidebookNotes ?? '',
+    updated_at: e.updatedAt,
+  }).eq('id', req.params.id).eq('user_id', userId)
+  if (error) return res.status(500).json({ error: error.message })
+  runAnalysis(req.params.id, userId!).catch(err => console.error('Auto-analysis failed:', err))
   res.json({ ok: true })
 })
 
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM entries WHERE id = ?').run(req.params.id)
+router.delete('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { error } = await supabase.from('entries')
+    .delete().eq('id', req.params.id).eq('user_id', userId)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ ok: true })
 })
 

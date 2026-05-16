@@ -75,6 +75,7 @@ export interface Theme {
 export interface ImageRecord {
   id: string
   filename: string
+  url: string
   refType: string
   refId: string
   caption: string

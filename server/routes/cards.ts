@@ -1,54 +1,60 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { getAuth } from '@clerk/express'
+import { supabase } from '../lib/supabase'
 
 const router = Router()
 
-function parseCard(row: Record<string, unknown>) {
+function mergeCard(cardId: string, custom: Record<string, unknown> | null) {
   return {
-    id: row.id,
-    personalMeanings: JSON.parse(row.personal_meanings as string || '[]'),
-    symbolism: JSON.parse(row.symbolism as string || '[]'),
-    archetypeNotes: JSON.parse(row.archetype_notes as string || '[]'),
-    visualNotes: row.visual_notes || '',
-    associatedSymbols: JSON.parse(row.associated_symbols as string || '[]'),
-    guidebookDrafts: JSON.parse(row.guidebook_drafts as string || '[]'),
-    lastUpdated: row.last_updated || null,
+    id: cardId,
+    personalMeanings: custom?.personal_meanings ?? [],
+    symbolism: custom?.symbolism ?? [],
+    archetypeNotes: custom?.archetype_notes ?? [],
+    visualNotes: custom?.visual_notes ?? '',
+    associatedSymbols: custom?.associated_symbols ?? [],
+    guidebookDrafts: custom?.guidebook_drafts ?? [],
+    lastUpdated: custom?.last_updated ?? null,
   }
 }
 
-router.get('/', (_req, res) => {
-  const rows = db.prepare('SELECT * FROM cards').all() as Record<string, unknown>[]
-  res.json(rows.map(parseCard))
+router.get('/', async (req, res) => {
+  const { userId } = getAuth(req)
+  const [{ data: cards, error: e1 }, { data: customs, error: e2 }] = await Promise.all([
+    supabase.from('cards').select('id'),
+    supabase.from('card_customizations').select('*').eq('user_id', userId),
+  ])
+  if (e1 || e2) return res.status(500).json({ error: (e1 ?? e2)?.message })
+  const customMap = new Map((customs ?? []).map(c => [c.card_id, c]))
+  res.json((cards ?? []).map(c => mergeCard(c.id, customMap.get(c.id) ?? null)))
 })
 
-router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(req.params.id) as Record<string, unknown> | undefined
-  if (!row) return res.status(404).json({ error: 'Not found' })
-  res.json(parseCard(row))
+router.get('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
+  const [{ data: card, error: e1 }, { data: custom, error: e2 }] = await Promise.all([
+    supabase.from('cards').select('id').eq('id', req.params.id).maybeSingle(),
+    supabase.from('card_customizations').select('*')
+      .eq('user_id', userId).eq('card_id', req.params.id).maybeSingle(),
+  ])
+  if (e1 || e2) return res.status(500).json({ error: (e1 ?? e2)?.message })
+  if (!card) return res.status(404).json({ error: 'Not found' })
+  res.json(mergeCard(card.id, custom))
 })
 
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
   const c = req.body
-  db.prepare(`
-    UPDATE cards SET
-      personal_meanings = @personalMeanings,
-      symbolism = @symbolism,
-      archetype_notes = @archetypeNotes,
-      visual_notes = @visualNotes,
-      associated_symbols = @associatedSymbols,
-      guidebook_drafts = @guidebookDrafts,
-      last_updated = @lastUpdated
-    WHERE id = @id
-  `).run({
-    id: req.params.id,
-    personalMeanings: JSON.stringify(c.personalMeanings || []),
-    symbolism: JSON.stringify(c.symbolism || []),
-    archetypeNotes: JSON.stringify(c.archetypeNotes || []),
-    visualNotes: c.visualNotes || '',
-    associatedSymbols: JSON.stringify(c.associatedSymbols || []),
-    guidebookDrafts: JSON.stringify(c.guidebookDrafts || []),
-    lastUpdated: c.lastUpdated || new Date().toISOString(),
-  })
+  const { error } = await supabase.from('card_customizations').upsert({
+    user_id: userId,
+    card_id: req.params.id,
+    personal_meanings: c.personalMeanings ?? [],
+    symbolism: c.symbolism ?? [],
+    archetype_notes: c.archetypeNotes ?? [],
+    visual_notes: c.visualNotes ?? '',
+    associated_symbols: c.associatedSymbols ?? [],
+    guidebook_drafts: c.guidebookDrafts ?? [],
+    last_updated: c.lastUpdated ?? new Date().toISOString(),
+  }, { onConflict: 'user_id,card_id' })
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ ok: true })
 })
 

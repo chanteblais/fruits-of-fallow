@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
-import { db } from '../db'
+import { getAuth } from '@clerk/express'
+import { supabase } from '../lib/supabase'
 
 const router = Router()
 
@@ -8,68 +9,62 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
-function safeJson<T>(val: string, fallback: T): T {
+function safeJson<T>(val: unknown, fallback: T): T {
+  if (typeof val !== 'string') return (val as T) ?? fallback
   try { return JSON.parse(val) } catch { return fallback }
 }
 
-interface EntryRow {
-  id: string; date: string; card_id: string; card_name: string; orientation: string
-  primary_themes: string; personal_reflection: string; how_appeared: string
-  quotes_insights: string; emerging_symbols: string; visual_direction: string
-  psychological_themes: string; guidebook_notes: string; traditional_meaning: string
-}
-
-interface AnalysisRow {
-  id: string; entry_id: string; card_id: string
-  living_arcana_json: string; weaving_json: string
-  cross_links_json: string; not_archived_json: string; created_at: string
-}
-
-function parseAnalysis(row: AnalysisRow) {
+function parseAnalysis(row: Record<string, unknown>) {
   return {
     id: row.id,
     entryId: row.entry_id,
     cardId: row.card_id,
-    livingArcana: safeJson(row.living_arcana_json, {}),
-    theWeaving: safeJson(row.weaving_json, {}),
-    crossLinks: safeJson(row.cross_links_json, {}),
-    notArchived: safeJson(row.not_archived_json, []),
+    livingArcana: row.living_arcana_json ?? {},
+    theWeaving: row.weaving_json ?? {},
+    crossLinks: row.cross_links_json ?? {},
+    notArchived: row.not_archived_json ?? [],
     createdAt: row.created_at,
   }
 }
 
-// ── Get analysis for an entry ─────────────────────────────────────────────────
-router.get('/entry/:entryId', (req, res) => {
-  const row = db.prepare('SELECT * FROM entry_analysis WHERE entry_id = ?')
-    .get(req.params.entryId) as AnalysisRow | undefined
-  if (!row) return res.status(404).json({ error: 'Not yet analyzed' })
-  res.json(parseAnalysis(row))
+router.get('/entry/:entryId', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { data, error } = await supabase
+    .from('entry_analysis').select('*')
+    .eq('entry_id', req.params.entryId).eq('user_id', userId).maybeSingle()
+  if (error) return res.status(500).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Not yet analyzed' })
+  res.json(parseAnalysis(data))
 })
 
-// ── Get all analyses for a card ───────────────────────────────────────────────
-router.get('/card/:cardId', (req, res) => {
-  const rows = db.prepare(
-    'SELECT * FROM entry_analysis WHERE card_id = ? ORDER BY created_at DESC'
-  ).all(req.params.cardId) as AnalysisRow[]
-  res.json(rows.map(parseAnalysis))
+router.get('/card/:cardId', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { data, error } = await supabase
+    .from('entry_analysis').select('*')
+    .eq('card_id', req.params.cardId).eq('user_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json((data ?? []).map(parseAnalysis))
 })
 
-// ── Core analysis logic (exported for fire-and-forget use) ───────────────────
-export async function runAnalysis(entryId: string): Promise<void> {
+export async function runAnalysis(entryId: string, userId: string): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY) return
 
-  const entry = db.prepare('SELECT * FROM entries WHERE id = ?')
-    .get(entryId) as EntryRow | undefined
+  const { data: entry } = await supabase
+    .from('entries').select('*')
+    .eq('id', entryId).eq('user_id', userId).maybeSingle()
   if (!entry) return
 
-  const recentRows = db.prepare(
-    'SELECT * FROM entries WHERE id != ? ORDER BY date DESC, created_at DESC LIMIT 12'
-  ).all(entry.id) as EntryRow[]
+  const { data: recentRows } = await supabase
+    .from('entries').select('*')
+    .eq('user_id', userId).neq('id', entryId)
+    .order('date', { ascending: false })
+    .limit(12)
 
-  const formatEntry = (e: EntryRow, label: string) => {
-    const symbols  = safeJson<string[]>(e.emerging_symbols, []).join(', ')
-    const themes   = safeJson<string[]>(e.psychological_themes, []).join(', ')
-    const lines    = [`${label}: ${e.date} — ${e.card_name} (${e.orientation})`]
+  const formatEntry = (e: Record<string, unknown>, label: string) => {
+    const symbols = safeJson<string[]>(e.emerging_symbols, []).join(', ')
+    const themes  = safeJson<string[]>(e.psychological_themes, []).join(', ')
+    const lines   = [`${label}: ${e.date} — ${e.card_name} (${e.orientation})`]
     if (e.primary_themes)      lines.push(`Themes: ${e.primary_themes}`)
     if (e.personal_reflection) lines.push(`Reflection: ${e.personal_reflection}`)
     if (e.how_appeared)        lines.push(`How It Appeared: ${e.how_appeared}`)
@@ -83,7 +78,7 @@ export async function runAnalysis(entryId: string): Promise<void> {
   }
 
   const currentFormatted = formatEntry(entry, 'CURRENT ENTRY')
-  const contextFormatted = recentRows.length > 0
+  const contextFormatted = recentRows && recentRows.length > 0
     ? recentRows.map((e, i) => formatEntry(e, `Previous Entry ${i + 1}`)).join('\n---\n')
     : 'No previous entries.'
 
@@ -158,37 +153,38 @@ Return ONLY valid JSON (no fences, no preamble):
   const jsonText = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   const parsed = JSON.parse(jsonText)
 
-  db.prepare('DELETE FROM entry_analysis WHERE entry_id = ?').run(entry.id)
+  await supabase.from('entry_analysis')
+    .delete().eq('entry_id', entry.id).eq('user_id', userId)
 
-  db.prepare(`
-    INSERT INTO entry_analysis (id, entry_id, card_id, living_arcana_json, weaving_json, cross_links_json, not_archived_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    uid(), entry.id, entry.card_id,
-    JSON.stringify(parsed.living_arcana || {}),
-    JSON.stringify(parsed.the_weaving || {}),
-    JSON.stringify(parsed.cross_links || {}),
-    JSON.stringify(parsed.not_archived || []),
-    new Date().toISOString(),
-  )
+  await supabase.from('entry_analysis').insert({
+    id: uid(),
+    user_id: userId,
+    entry_id: entry.id,
+    card_id: entry.card_id,
+    living_arcana_json: parsed.living_arcana ?? {},
+    weaving_json: parsed.the_weaving ?? {},
+    cross_links_json: parsed.cross_links ?? {},
+    not_archived_json: parsed.not_archived ?? [],
+    created_at: new Date().toISOString(),
+  })
 }
 
-// ── Run analysis for an entry ─────────────────────────────────────────────────
 router.post('/entry/:entryId', async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not configured' })
   }
-
-  const entry = db.prepare('SELECT * FROM entries WHERE id = ?')
-    .get(req.params.entryId) as EntryRow | undefined
+  const { userId } = getAuth(req)
+  const { data: entry } = await supabase
+    .from('entries').select('id').eq('id', req.params.entryId).eq('user_id', userId).maybeSingle()
   if (!entry) return res.status(404).json({ error: 'Entry not found' })
 
   try {
-    await runAnalysis(req.params.entryId)
-    const row = db.prepare('SELECT * FROM entry_analysis WHERE entry_id = ?')
-      .get(req.params.entryId) as AnalysisRow | undefined
-    if (!row) return res.status(500).json({ error: 'Analysis ran but result not found' })
-    res.json(parseAnalysis(row))
+    await runAnalysis(req.params.entryId, userId!)
+    const { data, error } = await supabase
+      .from('entry_analysis').select('*')
+      .eq('entry_id', req.params.entryId).eq('user_id', userId).maybeSingle()
+    if (error || !data) return res.status(500).json({ error: 'Analysis ran but result not found' })
+    res.json(parseAnalysis(data))
   } catch (err) {
     console.error('Analysis error:', err)
     res.status(500).json({ error: 'Analysis failed — check server logs' })

@@ -60,7 +60,7 @@ export const api = {
       return authHeaders().then(headers =>
         fetch('/api/images', { method: 'POST', headers, body }).then(r => {
           if (!r.ok) throw new Error('Upload failed')
-          return r.json() as Promise<{ id: string; filename: string }>
+          return r.json() as Promise<{ id: string; url: string }>
         })
       )
     },

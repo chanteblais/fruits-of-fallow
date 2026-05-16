@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
-import { db } from '../db'
+import { getAuth } from '@clerk/express'
+import { supabase } from '../lib/supabase'
 
 const router = Router()
 
@@ -8,74 +9,70 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
-interface EntryRow {
-  id: string; date: string; card_name: string; orientation: string
-  primary_themes: string; personal_reflection: string; how_appeared: string
-  quotes_insights: string; emerging_symbols: string; visual_direction: string
-  psychological_themes: string; guidebook_notes: string; traditional_meaning: string
+function safeJson<T>(val: unknown, fallback: T): T {
+  if (typeof val !== 'string') return (val as T) ?? fallback
+  try { return JSON.parse(val) } catch { return fallback }
 }
 
-interface ThreadRow {
-  id: string; title: string; focus: string; body: string
-  threads_json: string; entry_ids: string; cards_observed: string
-  symbols_observed: string; entry_count: number; created_at: string
-}
-
-function parseThread(row: ThreadRow) {
+function parseThread(row: Record<string, unknown>) {
   return {
     id: row.id,
     title: row.title,
     focus: row.focus,
     body: row.body,
-    threads: JSON.parse(row.threads_json || '[]'),
-    entryIds: JSON.parse(row.entry_ids || '[]'),
-    cardsObserved: JSON.parse(row.cards_observed || '[]'),
-    symbolsObserved: JSON.parse(row.symbols_observed || '[]'),
+    threads: row.threads_json ?? [],
+    entryIds: row.entry_ids ?? [],
+    cardsObserved: row.cards_observed ?? [],
+    symbolsObserved: row.symbols_observed ?? [],
     entryCount: row.entry_count,
     createdAt: row.created_at,
   }
 }
 
-// ── List all threads ──────────────────────────────────────────────────────────
-router.get('/', (_req, res) => {
-  const rows = db.prepare(
-    'SELECT * FROM weaving_threads ORDER BY created_at DESC'
-  ).all() as ThreadRow[]
-  res.json(rows.map(parseThread))
+router.get('/', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { data, error } = await supabase
+    .from('weaving_threads').select('*')
+    .eq('user_id', userId).order('created_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json((data ?? []).map(parseThread))
 })
 
-// ── Get single thread ─────────────────────────────────────────────────────────
-router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM weaving_threads WHERE id = ?').get(req.params.id) as ThreadRow | undefined
-  if (!row) return res.status(404).json({ error: 'Thread not found' })
-  res.json(parseThread(row))
+router.get('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { data, error } = await supabase
+    .from('weaving_threads').select('*')
+    .eq('id', req.params.id).eq('user_id', userId).maybeSingle()
+  if (error) return res.status(500).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Thread not found' })
+  res.json(parseThread(data))
 })
 
-// ── Delete thread ─────────────────────────────────────────────────────────────
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM weaving_threads WHERE id = ?').run(req.params.id)
+router.delete('/:id', async (req, res) => {
+  const { userId } = getAuth(req)
+  const { error } = await supabase.from('weaving_threads')
+    .delete().eq('id', req.params.id).eq('user_id', userId)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ ok: true })
 })
 
-// ── Synthesize ────────────────────────────────────────────────────────────────
 router.post('/synthesize', async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(503).json({
-      error: 'ANTHROPIC_API_KEY is not set. Add it to your environment and restart the server.',
-    })
+    return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not set.' })
   }
-
+  const { userId } = getAuth(req)
   const { focus = '', maxEntries = 20 } = req.body as { focus?: string; maxEntries?: number }
 
-  const entries = db.prepare(
-    'SELECT * FROM entries ORDER BY date DESC, created_at DESC LIMIT ?'
-  ).all(maxEntries) as EntryRow[]
-
-  if (entries.length === 0) {
+  const { data: entries, error } = await supabase
+    .from('entries').select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(maxEntries)
+  if (error) return res.status(500).json({ error: error.message })
+  if (!entries || entries.length === 0) {
     return res.status(400).json({ error: 'No journal entries to thread yet.' })
   }
 
-  // Format entries for the prompt
   const formatted = entries.map((e, i) => {
     const symbols = safeJson<string[]>(e.emerging_symbols, []).join(', ')
     const themes  = safeJson<string[]>(e.psychological_themes, []).join(', ')
@@ -91,9 +88,7 @@ router.post('/synthesize', async (req, res) => {
     return lines.join('\n')
   }).join('\n---\n')
 
-  const focusLine = focus.trim()
-    ? `\n\nThe practitioner is asking: ${focus}\n`
-    : ''
+  const focusLine = focus.trim() ? `\n\nThe practitioner is asking: ${focus}\n` : ''
 
   const prompt = `You are the Living Thread — the mythic observer within "The Inner Atlas," a personal tarot practice and deck-development journal.${focusLine}
 
@@ -148,7 +143,6 @@ The threads array should name 4-8 recurring motifs, archetypal figures, or emoti
 
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2048,
@@ -156,48 +150,41 @@ The threads array should name 4-8 recurring motifs, archetypal figures, or emoti
     })
 
     const raw = (message.content[0] as { type: 'text'; text: string }).text.trim()
-
-    // Strip any accidental markdown fences
     const jsonText = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
     const parsed = JSON.parse(jsonText)
 
-    const id      = uid()
-    const now     = new Date().toISOString()
+    const id = uid()
+    const now = new Date().toISOString()
     const entryIds = entries.map(e => e.id)
 
-    db.prepare(`
-      INSERT INTO weaving_threads
-        (id, title, focus, body, threads_json, entry_ids, cards_observed, symbols_observed, entry_count, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    const { error: insertError } = await supabase.from('weaving_threads').insert({
       id,
-      parsed.title || 'Untitled Weaving',
+      user_id: userId,
+      title: parsed.title || 'Untitled Weaving',
       focus,
-      parsed.body || '',
-      JSON.stringify(parsed.threads || []),
-      JSON.stringify(entryIds),
-      JSON.stringify(parsed.cards_observed || []),
-      JSON.stringify(parsed.symbols_observed || []),
-      entries.length,
-      now,
-    )
+      body: parsed.body || '',
+      threads_json: parsed.threads ?? [],
+      entry_ids: entryIds,
+      cards_observed: parsed.cards_observed ?? [],
+      symbols_observed: parsed.symbols_observed ?? [],
+      entry_count: entries.length,
+      created_at: now,
+    })
+    if (insertError) return res.status(500).json({ error: insertError.message })
 
-    res.json(parseThread({
+    res.json({
       id, title: parsed.title, focus, body: parsed.body,
-      threads_json: JSON.stringify(parsed.threads || []),
-      entry_ids: JSON.stringify(entryIds),
-      cards_observed: JSON.stringify(parsed.cards_observed || []),
-      symbols_observed: JSON.stringify(parsed.symbols_observed || []),
-      entry_count: entries.length, created_at: now,
-    }))
+      threads: parsed.threads ?? [],
+      entryIds,
+      cardsObserved: parsed.cards_observed ?? [],
+      symbolsObserved: parsed.symbols_observed ?? [],
+      entryCount: entries.length,
+      createdAt: now,
+    })
   } catch (err) {
     console.error('Weaving synthesis error:', err)
     res.status(500).json({ error: 'Synthesis failed — check server logs' })
   }
 })
-
-function safeJson<T>(val: string, fallback: T): T {
-  try { return JSON.parse(val) } catch { return fallback }
-}
 
 export default router
